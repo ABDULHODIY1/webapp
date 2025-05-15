@@ -1,0 +1,32 @@
+services:
+  # Managed Redis instance for Socket.IO adapter
+  - type: redis
+    name: random-video-redis
+    plan: starter
+
+  # Node.js Web Service using PM2 cluster
+  - type: web
+    name: random-video-chat-server
+    env: node
+    region: oregon  # choose your preferred region
+    plan: free     # or choose a paid plan for more resources
+    repo: https://github.com/your-username/your-repo.git  # replace with your GitHub repo URL
+    branch: main
+    buildCommand: npm install
+    startCommand: pm2 start ecosystem.config.js --env production
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: random-video-redis
+          property: REDIS_URL
+
+# (Optional) Static site for frontend if served separately
+# staticSites:
+#   - name: random-video-chat-frontend
+#     branch: main
+#     buildCommand: echo "Nothing to build"
+#     publishPath: public
+#     repo: https://github.com/your-username/your-repo.git
+#     env:
+#       - key: BASE_PATH
+#         value: "/"
