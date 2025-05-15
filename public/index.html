@@ -1,0 +1,94 @@
+
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Random Video Chat</title>
+  <style>
+    body, html { margin:0; padding:0; height:100%; display:flex; flex-direction:column; }
+    #videos { flex:1; display:flex; }
+    video { width:50%; object-fit:cover; }
+    #status { padding: 10px; text-align:center; }
+    #controls { padding:10px; text-align:center; }
+    button { padding:10px 20px; border:none; border-radius:5px; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div id="status">Ulanish kutilyapti...</div>
+  <div id="videos">
+    <video id="local" autoplay muted></video>
+    <video id="remote" autoplay></video>
+  </div>
+  <div id="controls">
+    <button id="nextBtn">Keyingi Sherik</button>
+  </div>
+
+  <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    const socket = io();
+    const localVideo = document.getElementById('local');
+    const remoteVideo = document.getElementById('remote');
+    const statusDiv = document.getElementById('status');
+    const nextBtn = document.getElementById('nextBtn');
+
+    // Telegram WebApp init
+    Telegram.WebApp.ready();
+
+    let pc;
+    let roomName;
+
+    // Media setup
+    async function initMedia() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+      localVideo.srcObject = stream;
+      return stream;
+    }
+
+    // Create RTCPeerConnection
+    function createPeer(stream) {
+      pc = new RTCPeerConnection();
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      pc.ontrack = (evt) => { remoteVideo.srcObject = evt.streams[0]; };
+      pc.onicecandidate = (evt) => {
+        if (evt.candidate) {
+          socket.emit('signal', { room: roomName, signal: { candidate: evt.candidate } });
+        }
+      };
+    }
+
+    socket.on('status', msg => { statusDiv.innerText = msg; });
+
+    socket.on('paired', async (data) => {
+      statusDiv.innerText = 'Sherik topildi!';
+      roomName = data.room;
+      const stream = await initMedia();
+      createPeer(stream);
+
+      // Offer/Answer
+      if (socket.id === roomName.split('#')[0]) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('signal', { room: roomName, signal: { sdp: offer } });
+      }
+    });
+
+    socket.on('signal', async ({ from, signal }) => {
+      if (signal.sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        if (signal.sdp.type === 'offer') {
+          const ans = await pc.createAnswer();
+          await pc.setLocalDescription(ans);
+          socket.emit('signal', { room: roomName, signal: { sdp: ans } });
+        }
+      }
+      if (signal.candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+      }
+    });
+
+    nextBtn.onclick = () => location.reload();
+  </script>
+</body>
+</html>
